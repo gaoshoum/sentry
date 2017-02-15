@@ -5,7 +5,7 @@ import logging
 import math
 import operator
 import struct
-from collections import Sequence
+from collections import Sequence, defaultdict
 
 import mmh3
 from django.conf import settings
@@ -465,22 +465,29 @@ class FeatureSet(object):
         return self.index.record_multi(items)
 
     def query(self, group):
-        results = {}
+        results = defaultdict(dict)
         key = self.__number_format.pack(group.id)
         for label in self.features.keys():
-            alias = self.aliases[label]
-            scope = ':'.join((
-                alias,
-                self.__number_format.pack(group.project_id)
-            ))
-            results[label] = map(
+            data = map(
                 lambda (id, score): (
                     self.__number_format.unpack(id)[0],
                     score,
                 ),
-                self.index.query(scope, key)
+                self.index.query(
+                    ':'.join((
+                        self.aliases[label],
+                        self.__number_format.pack(group.project_id)
+                    )),
+                    key,
+                ),
             )
-        return results
+            for (id, score) in data:
+                results[id][label] = score
+        return sorted(
+            results.items(),
+            key=lambda (id, features): sum(features.values()),
+            reverse=True,
+        )
 
 
 def serialize_text_shingle(value, separator=b''):
